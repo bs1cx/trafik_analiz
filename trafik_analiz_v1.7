@@ -1,0 +1,111 @@
+import dash
+import pandas as pd
+import plotly.express as px
+from dash import dcc, html
+from dash.dependencies import Input, Output
+
+# Uygulama oluşturuluyor
+app = dash.Dash(__name__)
+
+# CSV dosyasını oku
+try:
+    df = pd.read_csv(r'C:\Users\vhre\Desktop\trafik_verisi.csv', delimiter='\t')
+except Exception as e:
+    print(f"Dosya okuma hatası: {e}")
+    exit()
+
+# Tarihleri doğru formatta görmek için
+try:
+    df['TRAFFIC INDEX DATE'] = pd.to_datetime(df['TRAFFIC INDEX DATE'], format='%d.%m.%Y')
+except Exception as e:
+    print(f"Tarih formatı hatası: {e}")
+    exit()
+
+# Trafik yoğunluğunu kategorilere ayıralım
+def categorize_traffic(row):
+    if row['AVERAGE TRAFFIC INDEX'] >= 60:
+        return 'High'
+    elif row['AVERAGE TRAFFIC INDEX'] >= 30:
+        return 'Medium'
+    else:
+        return 'Low'
+
+df['Traffic Category'] = df.apply(categorize_traffic, axis=1)
+
+# Dash uygulaması arayüzü
+app.layout = html.Div([
+    html.H1('İstanbul Trafik Endeksi Verisi', style={'textAlign': 'center'}),
+    
+    # Sol panel (Sidebar) - Kullanıcı arayüzü
+    html.Div([
+        html.H3('Veri Filtreleme', style={'color': 'blue', 'margin-left': '10px'}),
+        
+        # Tarih Aralığı Seçimi
+        dcc.DatePickerRange(
+            id='date-picker-range',
+            start_date=df['TRAFFIC INDEX DATE'].min().date(),
+            end_date=df['TRAFFIC INDEX DATE'].max().date(),
+            display_format='DD.MM.YYYY',
+            style={'margin': '10px', 'width': '80%'}
+        ),
+        
+        # Trafik Kategorisi Seçimi
+        dcc.Dropdown(
+            id='category-dropdown',
+            options=[
+                {'label': 'High', 'value': 'High'},
+                {'label': 'Medium', 'value': 'Medium'},
+                {'label': 'Low', 'value': 'Low'}
+            ],
+            multi=True,  # Birden fazla kategori seçilebilecek
+            value=['High', 'Medium', 'Low'],
+            placeholder='Trafik Kategorisi Seçin',
+            style={'margin': '10px', 'width': '80%'}
+        ),
+    ], style={
+        'width': '20%', 
+        'float': 'left', 
+        'backgroundColor': '#f0f0f0', 
+        'padding': '20px'
+    }),
+    
+    # Grafik Alanı
+    html.Div([
+        dcc.Graph(id='traffic-graph', style={'margin-left': '25px'})
+    ], style={
+        'width': '75%',
+        'float': 'right'
+    })
+])
+
+# Grafik için callback
+@app.callback(
+    Output('traffic-graph', 'figure'),
+    [Input('date-picker-range', 'start_date'),
+     Input('date-picker-range', 'end_date'),
+     Input('category-dropdown', 'value')]
+)
+def update_graph(start_date, end_date, categories):
+    try:
+        # Seçilen tarih aralığını kullanarak veri filtreleme
+        filtered_df = df[(df['TRAFFIC INDEX DATE'] >= start_date) & (df['TRAFFIC INDEX DATE'] <= end_date)]
+        
+        # Trafik kategorilerine göre veri filtreleme
+        filtered_df = filtered_df[filtered_df['Traffic Category'].isin(categories)]
+        
+        # Grafik oluşturma
+        fig = px.line(filtered_df, 
+                      x='TRAFFIC INDEX DATE', 
+                      y='AVERAGE TRAFFIC INDEX', 
+                      color='Traffic Category', 
+                      title='Trafik Endeksi Zaman Grafiği')
+        
+        return fig
+    
+    except Exception as e:
+        print(f"Grafik güncelleme hatası: {e}")
+        return {}
+
+# Uygulama çalıştırma
+if __name__ == '__main__':
+    app.run_server(debug=True)
